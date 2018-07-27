@@ -4,6 +4,7 @@
 ** Due Date: 7/29/2018
 ** Description:CS 372 Project 1: chatclient file.
 *********************************************************************/
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -19,15 +20,17 @@
 #define NO_INPUT 1
 #define TOO_LONG 2
 #define MSG_LIMIT 500
-
+//for backward compability. 
+//https://stackoverflow.com/questions/11405819/does-struct-hostent-have-a-field-h-addr
+//I did not have this problem in CS344 no idea why I am having it now
+//#define h_addr h_addr_list[0]
+//update: apparently defining _GNU_SOURCE also fixes this problem
 
 
 //function prototypes
 void sendMessage(char*, char*);
 char* getHandle();
 static int getUserInput(char *, char *, size_t sz);
-
-
 
 
 /*The following function gets user input to inter a message or handle name
@@ -38,7 +41,7 @@ static int getUserInput(char *prompt, char *buffer, size_t sz) {
 
     // Get line with buffer overrun protection.
     if (prompt != NULL) {
-        printf ("%s", prmpt);
+        printf ("%s", prompt);
         fflush (stdout);
     }
     if (fgets (buffer, sz, stdin) == NULL)
