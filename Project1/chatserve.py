@@ -17,7 +17,7 @@ import sys
 
 
 #globals
-BUFFER_SIZE = 500
+BUFFER_SIZE = 512      #handle can be at most 10 characters + an additional two characters for  "> "
 HANDLE = "Server"
 
 
@@ -25,14 +25,17 @@ HANDLE = "Server"
 #input: initialized server socket
 def recieveMessage(con_socket):
 	global BUFFER_SIZE
-	return con_socket.recv(BUFFER_SIZE)
-
+	recStr = con_socket.recv(1024)
+	print recStr
+	return recStr
 
 
 #this function sends message/reply to client
 #input: is user provided keyboard input, and connection socket where communication has been established
+#message is sent with handle prepended
 def sendMessage(msg, con_socket):
-	con_socket.send(msg)
+	completeMsg = HANDLE + "> " + msg
+	con_socket.send(completeMsg)
 
 
 #sets up the server's listening port and returns the intialized socket
@@ -41,8 +44,16 @@ def sendMessage(msg, con_socket):
 def startUp(portNo):
 	#setup server socket
 	serverSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+	
+	#socket reuse:
+	#source:  https://stackoverflow.com/questions/6380057/python-binding-socket-address-already-in-use
+	serverSocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+	
 	serverSocket.bind(('', portNo))
 	serverSocket.listen(1) 	#accept only 1 connection
+	
+	print("Server is live!")
+	print("Ready for incomming messages...")
 
 	return serverSocket
 
@@ -53,29 +64,36 @@ def startUp(portNo):
 def connectionLoop(portNo):
 	global HANDLE
 
-	#call setup server socket
+	#listening socket
 	serverSocket = startUp(portNo)
 
-	connctionSocket, addr = serverSocket.accept()
+	#outer loop
 	while 1:
-		rec_msg = recieveMessage(connectionSocket)
+		print("Waiting for message from client...")
+		connectionSocket, addr = serverSocket.accept()
+		while 1:
+			rec_msg = recieveMessage(connectionSocket)
+		
+			#exit if client sent "\quit" in message
+			if "\quit" in rec_msg:
+				break
 
-		#get reply from user and send to user
-		reply = raw_input(HANDLE +"> ")
-		sendMessage(reply)
+			#get reply from user and send to user
+			reply = raw_input(HANDLE +"> ")
+			sendMessage(reply, connectionSocket)
 
-		#if user entered "\quit" exit loop
-		if reply == "\quit":
-			break
+			#if user entered "\quit" exit loop
+			if reply == "\quit":
+				break
 
-	connectionSocket.close()
+		connectionSocket.close()
 
 
 def main():
 	if len(sys.argv) != 2:
-		print("Usage: ./chatserve <port number>")
+		print("Incorrect or missing arguments. Usage: ./chatserve <port number>")
 	else:
-		portnum = sys.argv[1]
+		portnum = int(sys.argv[1])
 		connectionLoop(portnum)
 
 

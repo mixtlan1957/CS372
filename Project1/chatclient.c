@@ -4,6 +4,7 @@
 ** Due Date: 7/29/2018
 ** Description:CS 372 Project 1: chatclient file. This file establishes chat comunication
 ** with chatserve.py that allows for messages for up to 500 characters long to be exchanged.
+** (Note: effective message length is 499 characters so as to allow for null terminating character.
 *********************************************************************/
 #define _GNU_SOURCE
 #include <stdio.h>
@@ -29,8 +30,8 @@
 
 
 //function prototypes
-int sendMessage(char*, char*);
-int recvMessage(char*, char*);
+int sendMessage(int, char*, char*);
+int recvMessage(int, char*);
 void initiateContact(char *, char*);
 static int getUserInput(char *, char *, size_t sz);
 
@@ -72,12 +73,21 @@ static int getUserInput(char *prompt, char *buffer, size_t sz) {
 //the number of bits sent.
 //input: socket file descriptor 
 //output: returns the number of bytes sent. A negative return value indicates there was a send error
-int sendMessage(int socketFD, char *msg_out) {
+int sendMessage(int socketFD, char *handle, char *msg_out) {
 	int byteSent = 0;
-	size_t tmpSz = sizeof(msg_out);
+
+	//prepend the handle to the message prior to sending
+	char *tempStr = malloc(sizeof(char)*512);
+	memset(tempStr, 0, 512);
+
+	strcpy(tempStr, handle);
+	strcat(tempStr, msg_out);
+	strcat(tempStr, "\0");
 
 	//send message on established socket file descriptor
-	byteSent = send(socketFD, msg_out, tmpSz);
+	byteSent = send(socketFD, tempStr, 512, 0);
+
+	free(tempStr);
 
 	return byteSent;
 }
@@ -88,11 +98,11 @@ int sendMessage(int socketFD, char *msg_out) {
 //the number of bits recieved.
 //input: socket file descriptor
 //output: returns the number of bytes recieved. A negative return values there was a recv error
-int recvMessage(socketFD, readBuffer) {
+int recvMessage(int socketFD, char *readBuffer) {
 	int charsRead;
 
 	//call recv to recieve message from server
-	charsRead = recv(socketFD, readBuffer, 500, 0);
+	charsRead = recv(socketFD, readBuffer, 1024, 0);
 
 	return charsRead;
 } 
@@ -119,6 +129,7 @@ void initiateContact(char *hostName, char *portNo) {
 	int portNumber = atoi(portNo);
 	char *instr = "Please enter your handle name. (Maximum 10 characters): ";
 	char handle[11];
+	char displayName[13];
 	size_t tmpSz, byteSent;
 
 
@@ -130,7 +141,10 @@ void initiateContact(char *hostName, char *portNo) {
 		printf("I'm sorry that handle input was invalid please try again.\n");
 		inputCheck = getUserInput(instr, handle, sizeof(handle));
 	}
-
+	//adjust the handle so that it is displayed as "handle> " on I/O
+	memset(displayName, '\0', sizeof(displayName));
+	strcpy(displayName, handle);
+	strcat(displayName, "> ");	
 
 
 	//The following code is based on lecture notes from Operating Systems class CS344
@@ -165,11 +179,11 @@ void initiateContact(char *hostName, char *portNo) {
 
 
 
-	//loop indefinetly until client enters "\quit"
+	//loop indefinetly until client enters "\quit" or server sends "\quit"
 	while(1) {
 		tmpSz = sizeof(sendMsgBuffer);
 		memset(readBuffer, '\0', tmpSz);
-		inputCheck = getUserInput(handle, sendMsgBuffer, tmpSz);
+		inputCheck = getUserInput(displayName, sendMsgBuffer, tmpSz);
 
 		//recieve and validate user input.
 		if (inputCheck != OK) {
@@ -180,7 +194,7 @@ void initiateContact(char *hostName, char *portNo) {
 		
 		//send message
 		byteSent = 0;
-		byteSent = sendMessage(socketFD, sendMsgBuffer);
+		byteSent = sendMessage(socketFD, displayName, sendMsgBuffer);
 		if (byteSent < 0) {
 			fprintf(stderr, "CLIENT: Send ERROR\n");
 			errorFlag = 1;
@@ -189,7 +203,7 @@ void initiateContact(char *hostName, char *portNo) {
 
 		//check if quit command was entered
 		//exit loop after sending '\quit' command if quit command was entered
-		if (strcmp(readBuffer, "\\quit") == 0) {
+		if (strncmp(sendMsgBuffer, "\\quit", 5) == 0) {
 			break;
 		}
 
@@ -208,10 +222,16 @@ void initiateContact(char *hostName, char *portNo) {
 		//display message
 		printf("%s\n", readBuffer);
 		fflush(stdout);
+
+		//exit if necessary
+		if (strstr(readBuffer, "\\quit") != NULL) {
+			break;
+		}
+
 	}
 
 	cleanup:
-	//free any malloc'd strings here
+	//if error flag was set exit with value of 1
 	if (errorFlag == 1) {
 		exit(1);
 	}
@@ -228,7 +248,7 @@ int main(int argc, char *argv[]) {
 		fprintf(stderr, "Please make sure host name followed by port number is included.\n");
 	}
 	else {
-		initiateContac(argv[1], argv[2]);
+		initiateContact(argv[1], argv[2]);
 
 	}
 
