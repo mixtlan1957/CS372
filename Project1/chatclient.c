@@ -23,9 +23,9 @@
 
 
 //function prototypes
-void sendMessage(char*);
+void sendMessage(char*, char*);
 char* getHandle();
-static int getUserInput(char *, char *, size_t sz, int size_limit);
+static int getUserInput(char *, char *, size_t sz);
 
 
 
@@ -37,16 +37,16 @@ static int getUserInput(char *prompt, char *buffer, size_t sz) {
 	int ch, extra;
 
     // Get line with buffer overrun protection.
-    if (prmpt != NULL) {
+    if (prompt != NULL) {
         printf ("%s", prmpt);
         fflush (stdout);
     }
-    if (fgets (buff, sz, stdin) == NULL)
+    if (fgets (buffer, sz, stdin) == NULL)
         return NO_INPUT;
 
     // If it was too long, there'll be no newline. In that case, we flush
     // to end of line so that excess doesn't affect the next call.
-    if (buff[strlen(buff)-1] != '\n') {
+    if (buffer[strlen(buffer)-1] != '\n') {
         extra = 0;
         while (((ch = getchar()) != '\n') && (ch != EOF))
             extra = 1;
@@ -56,7 +56,7 @@ static int getUserInput(char *prompt, char *buffer, size_t sz) {
  
 
     // Otherwise remove newline and give string back to caller.
-    buff[strlen(buff)-1] = '\0';
+    buffer[strlen(buffer)-1] = '\0';
     return OK;
 }
 
@@ -77,12 +77,12 @@ void sendMessage(char *hostName, char *portNo) {
 	int errorFlag = 0;
 	char sendMsgBuffer[500];
 	char readBuffer[500];
-	int currentRead = 0;
-	int currentSend = 0;
+		//int currentRead = 0;
+		//int currentSend = 0;
 	//convert port number to int
 	int portNumber = atoi(portNo);
-	char *instr = "Please enter your handle name. (Maximum 10 characters): "
-	char handle[11]
+	char *instr = "Please enter your handle name. (Maximum 10 characters): ";
+	char handle[11];
 	size_t tmpSz, byteSent;
 
 
@@ -91,7 +91,7 @@ void sendMessage(char *hostName, char *portNo) {
 	memset(handle, '\0', sizeof(handle));
 	inputCheck = getUserInput(instr, handle, sizeof(handle));
 	while(inputCheck != 0) {
-		printf("I'm sorry that handle input was invalid please try again.\n")
+		printf("I'm sorry that handle input was invalid please try again.\n");
 		inputCheck = getUserInput(instr, handle, sizeof(handle));
 	}
 
@@ -137,7 +137,7 @@ void sendMessage(char *hostName, char *portNo) {
 
 		//recieve and validate user input.
 		if (inputCheck != OK) {
-			frpintf(stderr, "CLIENT: Bad string input.\n");
+			fprintf(stderr, "CLIENT: Bad string input.\n");
 			continue;
 		}
 
@@ -167,12 +167,16 @@ void sendMessage(char *hostName, char *portNo) {
 		}
 
 		//display message
-		printf("%s\n", readBuffer)
+		printf("%s\n", readBuffer);
 		fflush(stdout);
 	}
 
 	cleanup:
 	//free any malloc'd strings here
+	if (errorFlag == 1) {
+		exit(1);
+	}
+
 
 	//close the connection
 	close(socketFD);
@@ -181,11 +185,11 @@ void sendMessage(char *hostName, char *portNo) {
 int main(int argc, char *argv[]) {
 	//make sure that two arguments are being passed: program name, port number
 	if (argc != 3) {
-		fprintf(stderr, "Incorrect number of arguments passed to function. 
-			Please make sure host name followed by port number is included.\n");
+		fprintf(stderr, "Incorrect number of arguments passed to function. "); 
+		fprintf(stderr, "Please make sure host name followed by port number is included.\n");
 	}
 	else {
-		sendMessage(argv[1]);
+		sendMessage(argv[1], argv[2]);
 
 	}
 
