@@ -2,7 +2,8 @@
 ** Program Filename: chatclient.c
 ** Author: Mario Franco-Munoz
 ** Due Date: 7/29/2018
-** Description:CS 372 Project 1: chatclient file.
+** Description:CS 372 Project 1: chatclient file. This file establishes chat comunication
+** with chatserve.py that allows for messages for up to 500 characters long to be exchanged.
 *********************************************************************/
 #define _GNU_SOURCE
 #include <stdio.h>
@@ -28,8 +29,9 @@
 
 
 //function prototypes
-void sendMessage(char*, char*);
-char* getHandle();
+int sendMessage(char*, char*);
+int recvMessage(char*, char*);
+void initiateContact(char *, char*);
 static int getUserInput(char *, char *, size_t sz);
 
 
@@ -66,10 +68,42 @@ static int getUserInput(char *prompt, char *buffer, size_t sz) {
 
 
 
+//sendMessge sends a mesage to the established socket file descriptor and returns
+//the number of bits sent.
+//input: socket file descriptor 
+//output: returns the number of bytes sent. A negative return value indicates there was a send error
+int sendMessage(int socketFD, char *msg_out) {
+	int byteSent = 0;
+	size_t tmpSz = sizeof(msg_out);
+
+	//send message on established socket file descriptor
+	byteSent = send(socketFD, msg_out, tmpSz);
+
+	return byteSent;
+}
+
+
+
+//recieveMessage recieves a message on the established socket file descriptor and returns
+//the number of bits recieved.
+//input: socket file descriptor
+//output: returns the number of bytes recieved. A negative return values there was a recv error
+int recvMessage(socketFD, readBuffer) {
+	int charsRead;
+
+	//call recv to recieve message from server
+	charsRead = recv(socketFD, readBuffer, 500, 0);
+
+	return charsRead;
+} 
+
+
+
 /* The following is the main driver function for the client. It prompts the user to first
 enter a handle name and then prompts the user to enter chat messages until the "\quit" command is entered
+Upon user entering "\quit", the client sends this as the last message to the chatserve.py server and exits loop.
 */
-void sendMessage(char *hostName, char *portNo) {
+void initiateContact(char *hostName, char *portNo) {
 	//socket specific variables
 	int socketFD, charsRead;
 	struct sockaddr_in serverAddress;
@@ -80,8 +114,7 @@ void sendMessage(char *hostName, char *portNo) {
 	int errorFlag = 0;
 	char sendMsgBuffer[500];
 	char readBuffer[500];
-		//int currentRead = 0;
-		//int currentSend = 0;
+
 	//convert port number to int
 	int portNumber = atoi(portNo);
 	char *instr = "Please enter your handle name. (Maximum 10 characters): ";
@@ -144,22 +177,25 @@ void sendMessage(char *hostName, char *portNo) {
 			continue;
 		}
 
-
-		//check if quit command was entered
-		if (strcmp(readBuffer, "\\quit") == 0) {
-			break;
-		}
+		
 		//send message
 		byteSent = 0;
-		byteSent = send(socketFD, sendMsgBuffer, tmpSz, 0);
+		byteSent = sendMessage(socketFD, sendMsgBuffer);
 		if (byteSent < 0) {
 			fprintf(stderr, "CLIENT: Send ERROR\n");
 			errorFlag = 1;
 			goto cleanup;
 		}
 
+		//check if quit command was entered
+		//exit loop after sending '\quit' command if quit command was entered
+		if (strcmp(readBuffer, "\\quit") == 0) {
+			break;
+		}
+
+
 		//recieve message
-		charsRead = recv(socketFD, readBuffer, 500, 0);
+		charsRead = recvMessage(socketFD, readBuffer);
 
 		
 		//error handling
@@ -192,7 +228,7 @@ int main(int argc, char *argv[]) {
 		fprintf(stderr, "Please make sure host name followed by port number is included.\n");
 	}
 	else {
-		sendMessage(argv[1], argv[2]);
+		initiateContac(argv[1], argv[2]);
 
 	}
 
