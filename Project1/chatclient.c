@@ -118,6 +118,7 @@ void initiateContact(char *hostName, char *portNo) {
 	int socketFD, charsRead;
 	struct sockaddr_in serverAddress;
 	struct hostent* serverHostInfo;
+	int firstMsg = 1;
 
 	//other variables
 	int inputCheck = 0;
@@ -181,9 +182,18 @@ void initiateContact(char *hostName, char *portNo) {
 
 	//loop indefinetly until client enters "\quit" or server sends "\quit"
 	while(1) {
+
+		//get message to send to server unless this is this is the first message being sent
+		//in which case PORTNUM needs to be sent
 		tmpSz = sizeof(sendMsgBuffer);
-		memset(readBuffer, '\0', tmpSz);
-		inputCheck = getUserInput(displayName, sendMsgBuffer, tmpSz);
+		memset(sendMsgBuffer, '\0', tmpSz);
+		if (firstMsg != 1) {
+			inputCheck = getUserInput(displayName, sendMsgBuffer, tmpSz);
+		}
+		else {
+			strcpy(sendMsgBuffer, portNo);
+			firstMsg = 0;
+		}
 
 		//recieve and validate user input.
 		if (inputCheck != OK) {
@@ -209,6 +219,8 @@ void initiateContact(char *hostName, char *portNo) {
 
 
 		//recieve message
+		tmpSz = sizeof(readBuffer);
+		memset(readBuffer, '\0', tmpSz);
 		charsRead = recvMessage(socketFD, readBuffer);
 
 		
