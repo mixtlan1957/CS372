@@ -19,6 +19,7 @@ If a port is already in use, user will be prompted to try on a different port.
 
 4. Run client by entering "./client <server-hostname> <port#> where the port number is the same number
 entered in step 2.
+Note that the <server-hostname> is "localhost" if the client and server are being run on the same server (e.i. both being run on flip2) otherwise you will need to be on the school network and enter the full server name, (e.g. flip2.engr.oregonstate.edu)
 
 5. To communicate, user on client must first enter a handle of length no greater than 10 characters long
 
