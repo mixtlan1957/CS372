@@ -30,7 +30,7 @@
 //function prototypes
 int startup(char*);
 void handleRequest(char *, struct sockaddr_in *);
-void primaryLoop();
+void primaryLoop(char *);
 
 
 //startup
@@ -39,9 +39,6 @@ int startup(char* port) {
 	int portNumber = atoi(port);
 	struct sockaddr_in serverAddress;
 	int listenSocketFD, establishedConnectionFD, charsRead;
-	char readBuffer[1000];
-
-
 
 	//Source: The following code is based on CS344 lecture notes and examples
 	// Set up the address struct for this process (the server)
@@ -108,6 +105,10 @@ void primaryLoop(char* port) {
 
 	//setup connection/listener
 	listenSocketFD = startup(port);
+	if (listenSocketFD == -1) {
+		errorFlag = 1;
+		goto cleanup;
+	}
 
 
 	while(1) {
@@ -143,10 +144,11 @@ void primaryLoop(char* port) {
 	}
 
 	cleanup:
+	if (errorFlag == 1) {
+		exit(1);
+	}
 
 }
-
-
 
 
 //handleRequest
@@ -183,7 +185,8 @@ void handleRequest(char *command, char *peerName) {
 	//check for the "-l command"
 	token = strtok(command, " \n");
 	if (token != NULL) {
-		if (strcmp(token, "-l")) {
+		if (strcmp(token, "-l") == 0) {
+			//get the data port number
 			token = strtok(command, " \n");
 			memset(charPort, '\0', sizeof(charPort));
 			strcpy(charPort, token);
@@ -211,6 +214,7 @@ void handleRequest(char *command, char *peerName) {
 		}
 		else {
 			errorFlag = 1;
+			goto dataConCleanup;
 		}
 	}
 	
@@ -233,24 +237,25 @@ void handleRequest(char *command, char *peerName) {
 			errorFlag = 1;
 			goto dataConCleanup;
 		}
-	}
+	
 
-	//copy in the address
-	memcpy((char*)&clientAddress.sin_addr.s_addr, (char*)clientHostInfo->h_addr, clientHostInfo->h_length);
+		//copy in the address
+		memcpy((char*)&clientAddress.sin_addr.s_addr, (char*)clientHostInfo->h_addr, clientHostInfo->h_length);
 
-	//set up the socket
-	socketFD = socket(AF_INET, SOCK_STREAM, 0); //create the socket
-	if (socketFD < 0) {
-		fprintf(stderr, "ftserver: ERROR opening socket\n");
-		errorFlag = 1;
-		goto cleanup;
-	}
+		//set up the socket
+		socketFD = socket(AF_INET, SOCK_STREAM, 0); //create the socket
+		if (socketFD < 0) {
+			fprintf(stderr, "ftserver: ERROR opening socket\n");
+			errorFlag = 1;
+			goto dataConCleanup;
+		}
 
-	//connect to ftclient
-	if (connect(socketFD, (struct sockaddr*)&clientAddress, sizeof(clientAddress)) < 0 ) { //connect socket to address
-		fprintf(stderr, "ftserver: ERROR connecting\n");
-		errorFlag = 1;
-		goto cleanup;
+		//connect to ftclient
+		if (connect(socketFD, (struct sockaddr*)&clientAddress, sizeof(clientAddress)) < 0 ) { //connect socket to address
+			fprintf(stderr, "ftserver: ERROR connecting\n");
+			errorFlag = 1;
+			goto dataConCleanup;
+		}
 	}
 
 
@@ -264,7 +269,7 @@ void handleRequest(char *command, char *peerName) {
 		fileIndex = malloc(sizeof(char) * fileIdxSize);
 		if (fileIndex == NULL) {
 			internalError = 1;
-			break;
+			goto dataConCleanup;
 		}
 		else {
 			memset(fileIndex, '\0', fileIdxSize);
@@ -296,6 +301,7 @@ void handleRequest(char *command, char *peerName) {
 				//reallocate if necessary
 				if (charStored >= fileIdxSize) {
 					char *temp = malloc(sizeof(char) * fileIdxSize *2);
+					memset(temp , '\0', fileIdxSize * 2);
 					memcpy(temp, fileIndex, fileIdxSize);
 					free(fileIndex);
 					fileIndex = temp;
@@ -304,6 +310,8 @@ void handleRequest(char *command, char *peerName) {
 
 			}
 		}
+		charStored++; //one last increment for null terminator
+
 
 		//send ftclient the list of files in the path directory as one continous string
 		byteSent = send(socketFD, fileIndex, 1000, 0);
@@ -341,7 +349,7 @@ void handleRequest(char *command, char *peerName) {
 			goto dataConCleanup;
 		}
 
-		//obtain file stats (length)
+		//obtain file stats (we need file length)
 		if (fstat(fd, &file_stat) < 0) {
 			fprintf(stderr, "Error obtaining file stats, %s\n", strerror(errno));
 			goto dataConCleanup;
@@ -352,7 +360,7 @@ void handleRequest(char *command, char *peerName) {
 
 		//load up a void pointer with the file contents
 		fileDataBuffer = malloc(fileSendSize);
-		memset(outBuffer, 0, fileSendSize);
+		memset(fileDataBuffer, 0, fileSendSize);
 		bytesRead = read(fd, fileDataBuffer, sizeof(fileDataBuffer));
 		if (bytesRead != fileSendSize) {
 			fprintf(stderr, "ftserver: Error loading data into file read buffer\n");
@@ -412,20 +420,19 @@ void handleRequest(char *command, char *peerName) {
 
 
 
-
-
-
-
-
 int main(int argc, char *argv[]) {
 	//make sure that two arguments are being passed: program name, port number
-	if (argc != 3) {
+	if (argc != 2) {
 		fprintf(stderr, "Incorrect number of arguments passed to function. "); 
-		fprintf(stderr, "Please make sure host name followed by port number is included.\n");
+		fprintf(stderr, "Please make sure port number is included.\n");
+		exit(1);
 	}
 	else {
-		startup(argv[1], argv[2]);
-
+		if (argv[1] == NULL) {
+			fprintf(stderr, "input port cannot be NULL.\n");
+			exit(1);
+		}
+		primaryLoop(argv[1]);
 	}
 
 
