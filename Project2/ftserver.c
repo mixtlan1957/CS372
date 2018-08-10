@@ -15,12 +15,14 @@
 #include <string.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <fcntl.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <netdb.h> 
 #include <assert.h>
 #include <dirent.h>
-
+#include <arpa/inet.h>  //convert IPv4 and IPv6 addresses from binary to text form
+#include <errno.h>
 
 #define CONNECTION_LIMIT 1
 #define MAX_FILE_NAME_LEN 256
@@ -38,7 +40,7 @@ int startup(char* port) {
 
 	int portNumber = atoi(port);
 	struct sockaddr_in serverAddress;
-	int listenSocketFD, establishedConnectionFD, charsRead;
+	int listenSocketFD, errorFlag = 0;
 
 	//Source: The following code is based on CS344 lecture notes and examples
 	// Set up the address struct for this process (the server)
@@ -52,7 +54,6 @@ int startup(char* port) {
 	if (listenSocketFD < 0) {
 		fprintf(stderr, "ERROR opening socket\n");
 		printf("Error opening socket\n");
-		errorFlag = 1;
 		goto cleanup2;
 	}
 
@@ -82,9 +83,10 @@ int startup(char* port) {
 
 	cleanup2:
 
+	if (errorFlag == 1) {
+		return -1;
+	}
 	return -1;
-
-
 }
 
 
@@ -93,15 +95,13 @@ int startup(char* port) {
 void primaryLoop(char* port) {
 
 	struct sockaddr_in clientAddress;
-	struct sockaddr_in ftclientAddress;
-	socklen_t ft_addr_len;
 	socklen_t sizeOfClientInfo;
 	int errorFlag, listenSocketFD, establishedConnectionFD;
 	//int establishedConnectionFD_FT;
 	int charsRead;
 	//pid_t spawnPid;
 	char readBuffer[1000];
-	char ipstr[INET6_ADDRSTRLEN];
+	
 
 	//setup connection/listener
 	listenSocketFD = startup(port);
@@ -127,19 +127,20 @@ void primaryLoop(char* port) {
 		charsRead = recv(establishedConnectionFD, readBuffer, 1000, 0);
 		if(charsRead < 0) {
 			fprintf(stderr, "ERROR reading from socket\n");
-			pintf("error reading from socket\n");
+			printf("error reading from socket\n");
 			errorFlag = 1;
-			goto cleanup:
+			goto cleanup;
 		}
 
-		//get the ftclient host name!
-		//source: beej's guide and 
-		//https://stackoverflow.com/questions/2064636/getting-the-source-address-of-an-incoming-socket-connection
-		getpeername(establishedConnectionFD, (struct sockaddr*)&ftclientAddress, &ft_addr_len);
-		inet_ntop(AF_INET, &establishedConnectionFD->sin_addr, ipstr, sizeof ipstr);
+		//	char *incHost = NULL;
+		//getnameinfo((struct sockaddr *)&clientAddress, sizeOfClientInfo, incHost, sizeof(incHost), NULL, NULL, 0);  
+		//unsigned long ftclient_Addr = clientAddress.sin_addr.s_addr;
+		
+		//gethostbyaddr(&clientAddress.sin_addr.s_addr, sizeof(clientAddress), AF_INET);
+
 
 		//call handle request
-		handleRequest(readBuffer, ipstr);
+		handleRequest(readBuffer, &clientAddress);
 
 	}
 
@@ -152,33 +153,31 @@ void primaryLoop(char* port) {
 
 
 //handleRequest
-void handleRequest(char *command, char *peerName) {
+void handleRequest(char *command, struct sockaddr_in *peerAddr) {
 
 	char *filePath = "./";
 	int internalError = 0;
-	FILE *sendFile;
 	DIR *dirLoadFrom;
 	int validInput = 0;
 	int displayDirectory = 0;
-	int sendFile = 0;
+	int sendFile, errorFlag = 0;
 	char fileName[MAX_FILE_NAME_LEN];
 	char charPort[56];
 	char *fileIndex = NULL;
 	int fileIdxSize = 56;
 	int sendDataPort;
 	int charStored = 0;
+	char *token;
+	struct dirent *fileInDir = NULL;
 	//socket variables for sending on data port
-	char ftclientName[1000];
 	int socketFD;
 	struct sockaddr_in clientAddress;
 	struct hostent* clientHostInfo;
 	int currentSend;
 	ssize_t byteSent;
 	//variables for sending particular file
-	int offset, remain_data, fd, fileSendSize, bytesRead;
-	struct stat file_stat;
-	void *fileDataBuffer = NULL;
-
+	int bytesRead;
+	FILE *fd = NULL;
 
 
 
@@ -230,7 +229,8 @@ void handleRequest(char *command, char *peerName) {
 		memset((char*)&clientAddress, '\0', sizeof(clientAddress)); //Clear out the address struct
 		clientAddress.sin_family = AF_INET; //create a network-cable socket (IPV4)
 		clientAddress.sin_port = htons(sendDataPort); //Store the port number
-		clientHostInfo = gethostbyname(peerName); //Convert the machine name into a special form of address
+		//clientHostInfo = gethostbyname(peerName); //Convert the machine name into a special form of address
+		clientHostInfo = gethostbyaddr(&(peerAddr->sin_addr), sizeof(peerAddr), AF_INET);
 		//validate the host
 		if (clientHostInfo == NULL) {
 			fprintf(stderr, "FTSERVER: ERROR, no such host\n");
@@ -240,7 +240,8 @@ void handleRequest(char *command, char *peerName) {
 	
 
 		//copy in the address
-		memcpy((char*)&clientAddress.sin_addr.s_addr, (char*)clientHostInfo->h_addr, clientHostInfo->h_length);
+		//memcpy((char*)&clientAddress.sin_addr.s_addr, (char*)clientHostInfo->h_addr, clientHostInfo->h_length);
+		memcpy((char*)&clientAddress.sin_addr.s_addr, (char*)clientHostInfo->h_addr, clientHostInfo->h_length); 
 
 		//set up the socket
 		socketFD = socket(AF_INET, SOCK_STREAM, 0); //create the socket
@@ -282,7 +283,7 @@ void handleRequest(char *command, char *peerName) {
 		//save all the file names
 		if (dirLoadFrom > 0) {
 			//iterate through files in base directory
-			while((fileInDir == readdir(dirLoadFrom)) != NULL) {
+			while((fileInDir == readdir(dirLoadFrom)) != 0) {
 				//skip over sub directories and parent directory
 				if (strcmp(fileInDir->d_name, "..") == 0) {
 					continue;
@@ -310,7 +311,7 @@ void handleRequest(char *command, char *peerName) {
 
 			}
 		}
-		charStored++; //one last increment for null terminator
+	 	charStored++; //one last increment for null terminator
 
 
 		//send ftclient the list of files in the path directory as one continous string
@@ -341,53 +342,30 @@ void handleRequest(char *command, char *peerName) {
 	//if "-g filename portno" was entered:
 	else if (validInput == 1 && sendFile == 1) {
 
-		//attempt to open file
-		//source: https://stackoverflow.com/questions/11952898/c-send-and-receive-file
-		fd = open(fileName, O_RDONLY);
-		if (fd == -1) {
-			fprintf(stderr, "ftserver: error opening file. %s\n", strerror(errno));
+		if ((fd = fopen(fileName, "r")) == NULL) {
+			fprintf(stderr, "ftserver: errror opening file. %s\n", strerror(errno));
 			goto dataConCleanup;
 		}
-
-		//obtain file stats (we need file length)
-		if (fstat(fd, &file_stat) < 0) {
-			fprintf(stderr, "Error obtaining file stats, %s\n", strerror(errno));
-			goto dataConCleanup;
-		}
-
-		fileSendSize = 0;
-		sprintf(fileSendSize, "%d", file_stat.st_size);
-
-		//load up a void pointer with the file contents
-		fileDataBuffer = malloc(fileSendSize);
-		memset(fileDataBuffer, 0, fileSendSize);
-		bytesRead = read(fd, fileDataBuffer, sizeof(fileDataBuffer));
-		if (bytesRead != fileSendSize) {
-			fprintf(stderr, "ftserver: Error loading data into file read buffer\n");
-		}
- 
-		//send file in 1000 byte chunks
-		byteSent = send(socketFD, fileDataBuffer, 1000, 0);
-		if (byteSent < 0) {
-			fprintf(stderr, "ftserver: Send ERROR\n");
-			errorFlag = 1;
-			goto dataConCleanup;
-		}
-		while(byteSent < fileSendSize) {
-			currentSend = send(socketFD, &fileDataBuffer[byteSent], 1000, 0); //send out next chunk of data
-
-			//check for send errors
-			if (currentSend < 0) {
-				fprintf(stderr, "ftserver: Send ERROR\n");
-				errorFlag = 1;
-				goto dataConCleanup;
+		//read and send in 1000 byte chunks
+		unsigned char fileDataBuffer[1000];
+		memset(fileDataBuffer, 0, sizeof(fileDataBuffer));
+		bytesRead = fread(fileDataBuffer, 1, 1000, fd);
+		
+		//keep reading and sending until entire file has been sent
+		while(bytesRead != 0) {
+			if (bytesRead > 0) {
+				currentSend = send(socketFD, fileDataBuffer, 1000, 0);
+				if (currentSend < 0) {
+					fprintf(stderr, "ftserver: Send ERROR\n");
+					errorFlag = 1;
+					goto dataConCleanup;
+				}	
 			}
-			//if our send was successful, tally up the bytes to move the pointer
-			else {
-				byteSent += currentSend;
-			}
-		}	
+			memset(fileDataBuffer, 0, sizeof(fileDataBuffer));
+			bytesRead = fread(fileDataBuffer, 1, 1000, fd);
+		}
 
+		fclose(fd);
 	}
 
 	else {
@@ -406,12 +384,12 @@ void handleRequest(char *command, char *peerName) {
 		free(fileIndex);
 	}
 
-	if (fileDataBuffer != NULL) {
-		free(fileDataBuffer);
-	}
-
 	if (socketFD != 0) {
 		close(socketFD);
+	}
+
+	if (errorFlag == 1) {
+		exit(1);
 	}
 
 }

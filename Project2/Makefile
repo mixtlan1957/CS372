@@ -1,9 +1,9 @@
 CFLAGS = -Wall -lm -std=c99
 
-all: client
+all: server
 
-client: chatclient.c
-	gcc -g $(CFLAGS) -o client chatclient.c 	
+server: ftserver.c
+	gcc -g $(CFLAGS) -o client ftserver.c 	
 
 clean:
 	rm -f *.o
