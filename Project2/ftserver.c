@@ -146,7 +146,7 @@ void primaryLoop(char* port) {
 		fileSent = handleRequest(readBuffer, &clientAddress);
 
 		//send status messages
-		int *msgSize;
+		int *msgSize = NULL;
 		if (fileSent == 0) {
 			*msgSize = sizeof(fileNotFound);
 			byteSent = send(establishedConnectionFD, msgSize, 4, 0);
@@ -156,7 +156,7 @@ void primaryLoop(char* port) {
 			}
 		}
 		else if (fileSent == 1) {
-			msgSize = sizeof(xferComplete);
+			*msgSize = sizeof(xferComplete);
 			byteSent = send(establishedConnectionFD, msgSize, 4, 0);	
 			byteSent = send(establishedConnectionFD, xferComplete, 100, 0);
 			if (byteSent < 0) {
@@ -191,7 +191,7 @@ int handleRequest(char *command, struct sockaddr_in *peerAddr) {
 	char *token;
 	struct dirent *fileInDir = NULL;
 	//socket variables for sending on data port
-	int socketFD, msgSize;
+	int socketFD;
 	struct sockaddr_in clientAddress;
 	struct hostent* clientHostInfo;
 	int currentSend;
@@ -336,7 +336,8 @@ int handleRequest(char *command, struct sockaddr_in *peerAddr) {
 
 
 	 	//send the size of the message we are going to send
-	 	msgSize = sizeof(fileIndex);
+	 	int *msgSize = NULL;
+		*msgSize = sizeof(fileIndex);
 	 	byteSent = send(socketFD, msgSize, 4, 0);
 	 	if (byteSent < 0) {
 			fprintf(stderr, "ftserver: Send ERROR\n");
