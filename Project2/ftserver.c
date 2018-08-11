@@ -74,9 +74,8 @@ int startup(char* port) {
 	}
 	listen(listenSocketFD, CONNECTION_LIMIT); // Flip the socket on - it can now receive up to x connections
 
-	printf("Server is live!\n");
-	printf("Ready for incomming ft requests...\n");
 
+	printf("Server open on %s\n", port);
 
 
 	return listenSocketFD;
@@ -117,7 +116,9 @@ void primaryLoop(char* port) {
 	while(1) {
 		errorFlag = 0;
 
-		// Accept a connection, blocking if one is not available until one connects
+		// 
+		// Accept a connection, blocking if one is not availab
+		// le until one connects
 		sizeOfClientInfo = sizeof(clientAddress); // Get the size of the address for the client that will connect
 		establishedConnectionFD = accept(listenSocketFD, (struct sockaddr *)&clientAddress, &sizeOfClientInfo); // Accept
 		if (establishedConnectionFD < 0) {
@@ -141,23 +142,28 @@ void primaryLoop(char* port) {
 		
 		//gethostbyaddr(&clientAddress.sin_addr.s_addr, sizeof(clientAddress), AF_INET);
 
+		
 
 		//call handle request
 		fileSent = handleRequest(readBuffer, &clientAddress);
 
 		//send status messages
-		int *msgSize = NULL;
+		int msgSize = 0;
+		char szCString[4];
+		memset(szCString, '\0', 4);
 		if (fileSent == 0) {
-			*msgSize = sizeof(fileNotFound);
-			byteSent = send(establishedConnectionFD, msgSize, 4, 0);
+			msgSize = strlen(fileNotFound) + 1;
+			sprintf(szCString, "%d", msgSize);
+			byteSent = send(establishedConnectionFD, szCString, 4, 0);
 			byteSent = send(establishedConnectionFD, fileNotFound, 100, 0);
 			if (byteSent < 0) {
 				fprintf(stderr, "ftserver: send ERROR\n");
 			}
 		}
 		else if (fileSent == 1) {
-			*msgSize = sizeof(xferComplete);
-			byteSent = send(establishedConnectionFD, msgSize, 4, 0);	
+			msgSize = strlen(xferComplete) + 1;
+			sprintf(szCString, "%d", msgSize);
+			byteSent = send(establishedConnectionFD, szCString, 4, 0);	
 			byteSent = send(establishedConnectionFD, xferComplete, 100, 0);
 			if (byteSent < 0) {
 				fprintf(stderr, "ftserver: send ERROR\n");
@@ -176,7 +182,6 @@ void primaryLoop(char* port) {
 //handleRequest
 int handleRequest(char *command, struct sockaddr_in *peerAddr) {
 
-	char *filePath = "./";
 	int internalError = 0;
 	DIR *dirLoadFrom;
 	int validInput = 0;
@@ -190,6 +195,7 @@ int handleRequest(char *command, struct sockaddr_in *peerAddr) {
 	int charStored = 0;
 	char *token;
 	struct dirent *fileInDir = NULL;
+	char ftclientName[256];
 	//socket variables for sending on data port
 	int socketFD;
 	struct sockaddr_in clientAddress;
@@ -200,14 +206,16 @@ int handleRequest(char *command, struct sockaddr_in *peerAddr) {
 	int bytesRead, fileFound = 2;
 	FILE *fd = NULL;
 
-
+	//char tempStr[56];
+	//memset(tempStr, '\0', sizeof(tempStr));
+	//strcpy(tempStr, command);
 
 	//check for the "-l command"
-	token = strtok(command, " \n");
+	token = strtok(command, " ");
 	if (token != NULL) {
 		if (strcmp(token, "-l") == 0) {
 			//get the data port number
-			token = strtok(command, " \n");
+			token = strtok(NULL, " ");
 			memset(charPort, '\0', sizeof(charPort));
 			strcpy(charPort, token);
 			sendDataPort = atoi(charPort);
@@ -215,14 +223,14 @@ int handleRequest(char *command, struct sockaddr_in *peerAddr) {
 			displayDirectory = 1;
 		}
 		//check for -g and subsequent file name and port number
-		else if (strcmp(token, "-g")) {
-			token = strtok(command, " \n");
+		else if (strcmp(token, "-g") == 0) {
+			token = strtok(NULL, " ");
 			if (token != NULL) {
 				memset(fileName, '\0', MAX_FILE_NAME_LEN);
 				strcpy(fileName, token);
 
 				//get the port number
-				token = strtok(command, " \n");
+				token = strtok(NULL, " \n");
 				if (token != NULL) {
 					memset(charPort, '\0', sizeof(charPort));
 					strcpy(charPort, token);
@@ -237,7 +245,6 @@ int handleRequest(char *command, struct sockaddr_in *peerAddr) {
 			goto dataConCleanup;
 		}
 	}
-	
 
 	
 	//setup socket for file transfer connection
@@ -280,10 +287,19 @@ int handleRequest(char *command, struct sockaddr_in *peerAddr) {
 		}
 	}
 
+	//get the client name
+	//this was incredibly annoying to find:
+	//source: http://www.microhowto.info/howto/convert_an_ip_address_to_the_corresponding_domain_name_in_c.html
+	//getpeername() is not what we need here! getnameinfo() is!
+	memset(ftclientName, '\0', sizeof(ftclientName));
+	getnameinfo((struct sockaddr*)&clientAddress, sizeof(clientAddress), ftclientName, sizeof(ftclientName), 0, 0, 0);
+	//strcpy(ftclientName, "ionodude");
+
 
 	//send working directory if applicable
 	if (validInput == 1 && displayDirectory == 1) {
-		
+		printf("List directory requested on port %s.\n", charPort);
+		printf("Sending directory contents to %s: %s\n", ftclientName, charPort);
 
 		//allocate string for sending directory contents
 		fileIdxSize = 1000;
@@ -299,12 +315,12 @@ int handleRequest(char *command, struct sockaddr_in *peerAddr) {
 
 
 		//open base directory
-		dirLoadFrom = opendir(filePath);
-
+		dirLoadFrom = opendir(".");
+		int firstRead = 0;
 		//save all the file names
 		if (dirLoadFrom > 0) {
 			//iterate through files in base directory
-			while((fileInDir == readdir(dirLoadFrom)) != 0) {
+			while((fileInDir = readdir(dirLoadFrom)) != 0) {
 				//skip over sub directories and parent directory
 				if (strcmp(fileInDir->d_name, "..") == 0) {
 					continue;
@@ -315,11 +331,20 @@ int handleRequest(char *command, struct sockaddr_in *peerAddr) {
 
 
 				//store file name (file name only, full file path will have to be appended later)
-				strcat(fileIndex, fileInDir->d_name);
-				strcat(fileIndex, "\n");
+				if (firstRead == 0) {
+					strcpy(fileIndex, fileInDir->d_name);
+					strcat(fileIndex, "\n");
+					firstRead = 1;
+				}
+
+				else {
+					strcat(fileIndex, fileInDir->d_name);
+					strcat(fileIndex, "\n");
+				}
 				charStored += strlen(fileInDir->d_name);
 				charStored++;   //newline character
 			
+				
 				//reallocate if necessary
 				if (charStored >= fileIdxSize) {
 					char *temp = malloc(sizeof(char) * fileIdxSize *2);
@@ -332,13 +357,15 @@ int handleRequest(char *command, struct sockaddr_in *peerAddr) {
 
 			}
 		}
-	 	charStored++; //one last increment for null terminator
-
+	 	charStored++; //one last increment for null terminator	
+	
+		char charMsgSize[4];
+		memset(charMsgSize, '\0', 4);
+		sprintf(charMsgSize, "%d", charStored); 
 
 	 	//send the size of the message we are going to send
-	 	int *msgSize = NULL;
-		*msgSize = sizeof(fileIndex);
-	 	byteSent = send(socketFD, msgSize, 4, 0);
+	 
+	 	byteSent = send(socketFD, charMsgSize, 4, 0);
 	 	if (byteSent < 0) {
 			fprintf(stderr, "ftserver: Send ERROR\n");
 			errorFlag = 1;
@@ -373,9 +400,12 @@ int handleRequest(char *command, struct sockaddr_in *peerAddr) {
 
 	//if "-g filename portno" was entered:
 	else if (validInput == 1 && sendFile == 1) {
+		printf("Connection from %s.\n", ftclientName);
+		printf("File \"%s\" requested on port %s.\n", fileName, charPort);
+
 
 		if ((fd = fopen(fileName, "r")) == NULL) {
-			fprintf(stderr, "ftserver: error opening file. %s\n", strerror(errno));
+			printf("File not found. Sending error message to %s: %s\n", ftclientName, charPort);
 			fileFound = 0;
 			goto dataConCleanup;
 		}
@@ -383,12 +413,14 @@ int handleRequest(char *command, struct sockaddr_in *peerAddr) {
 		//sorce: https://stackoverflow.com/questions/238603/how-can-i-get-a-files-size-in-c
 		//get size of file
 		fseek(fd, 0L, SEEK_END);
-		int *sz = NULL;
-		*sz = ftell(fd);
+		int sz = ftell(fd);
+		char sizeChar[4];
+		memset(sizeChar, '\0', 4);
+		sprintf(sizeChar, "%d", sz);
 		rewind(fd);
 
 		//tell the client how big the file is that we are sending:
-	 	byteSent = send(socketFD, sz, 4, 0);
+	 	byteSent = send(socketFD, sizeChar, 4, 0);
 	 	if (byteSent < 0) {
 			fprintf(stderr, "ftserver: Send ERROR\n");
 			errorFlag = 1;
