@@ -47,23 +47,11 @@ def recieveFile(rec_socketFD, fileName, portNo, comSocket, hostName):
 			fcount = fcount + 1
 			fileName =  fileName.split("_")[0] + "_copy" + str(fcount) + ".txt" 
 
-	
 
-	#recieve status message
-	status_C = comSocket.recv(4)
-	statusMsgLen = int(status_C.strip('\0'))
-	
+	statusMsg = comSocket.recv(56)
 
-	statusMsg = ""
-
-	while len(statusMsg) < statusMsgLen:
-		packet = comSocket.recv(statusMsgLen - len(statusMsg))
-		if not packet:
-			return None
-		statusMsg += packet	
-
-	if statusMsg == "FILE NOT FOUND.":
-		print(hostname + ":" + str(portNo) + "says " + statusMsg)
+	if statusMsg == "FILE NOT FOUND.\0":
+		print(hostName + ":" + str(portNo) + " says " + statusMsg)
 	else:
 		print("Receiving \"" + fileName + "\" from " + hostName + ":" + str(portNo))
 		status = "ok"	
@@ -71,10 +59,9 @@ def recieveFile(rec_socketFD, fileName, portNo, comSocket, hostName):
 
 
 	if status == "ok":		
-		#file length will be in "header" aka first four bytes of data		
-		fileLen_CString = connectionSocket.recv(4)
+		#file length will be in "header" aka first bytes of data		
+		fileLen_CString = connectionSocket.recv(256)
 		fileLen = int(fileLen_CString.strip('\0'))
-
 
 		fileBuffer = ""
 
@@ -86,7 +73,7 @@ def recieveFile(rec_socketFD, fileName, portNo, comSocket, hostName):
 
 		with open(fileName, 'w') as f:
 			f.write(fileBuffer)
-
+		print("File transfer complete.");
 
 	connectionSocket.close()
 	#rec_socketFD.close()
@@ -101,7 +88,7 @@ def recieveFileList(rec_socketFD, portNo, hostName):
 
 	#https://stackoverflow.com/questions/22747152/converting-string-to-int-in-serial-connection
 	#file length will be in "header" aka first four bytes of data
-	msgLen_CString = connectionSocket.recv(4)
+	msgLen_CString = connectionSocket.recv(256)
 	msgLen = int(msgLen_CString.strip('\0'))
 	#print("Message length: " + str(msgLen))
 

@@ -31,7 +31,7 @@
 
 //function prototypes
 int startup(char*);
-int handleRequest(char *, struct sockaddr_in *);
+int handleRequest(char *, struct sockaddr_in *, int);
 void primaryLoop(char *);
 void sendStatusMsg(int, int); 
 
@@ -98,8 +98,8 @@ void primaryLoop(char* port) {
 	socklen_t sizeOfClientInfo;
 	int errorFlag, listenSocketFD, establishedConnectionFD;
 	//int establishedConnectionFD_FT;
-	int charsRead, fileSent;
-	ssize_t byteSent;
+	int charsRead; //, fileSent;
+	//ssize_t byteSent;
 	//pid_t spawnPid;
 	char readBuffer[1000];
 	
@@ -159,31 +159,21 @@ void primaryLoop(char* port) {
 void sendStatusMsg(int establishedConnectionFD, int fileSent) {
 	char *fileNotFound = "FILE NOT FOUND.";
 	char *xferComplete = "inbound";
-		
+	ssize_t byteSent;	
 
 	//send status messages
-	int msgSizeStatus = 0;
-	char szCString[4];
-	memset(szCString, '\0', 4);
 	if (fileSent == 0) {
-		msgSize = strlen(fileNotFound) + 1;
-		sprintf(szCString, "%d", msgSizeStatus);
-		byteSent = send(establishedConnectionFD, szCString, 4, 0);
-		byteSent = send(establishedConnectionFD, fileNotFound, 100, 0);
+		byteSent = send(establishedConnectionFD, fileNotFound, strlen(fileNotFound) + 1, 0);
 		if (byteSent < 0) {
 			fprintf(stderr, "ftserver: send ERROR\n");
 		}
 	}
 	else if (fileSent == 1) {
-		msgSize = strlen(xferComplete) + 1;
-		sprintf(szCString, "%d", msgSizeStatus);
-		byteSent = send(establishedConnectionFD, szCString, 4, 0);	
-		byteSent = send(establishedConnectionFD, xferComplete, 100, 0);
+		byteSent = send(establishedConnectionFD, xferComplete, strlen(xferComplete) + 1, 0);
 		if (byteSent < 0) {
 			fprintf(stderr, "ftserver: send ERROR\n");
 		}
 	}	
-
 }
 
 
@@ -303,7 +293,6 @@ int handleRequest(char *command, struct sockaddr_in *peerAddr, int establishedFD
 	//getpeername() is not what we need here! getnameinfo() is!
 	memset(ftclientName, '\0', sizeof(ftclientName));
 	getnameinfo((struct sockaddr*)&clientAddress, sizeof(clientAddress), ftclientName, sizeof(ftclientName), 0, 0, 0);
-	//strcpy(ftclientName, "ionodude");
 
 
 	//send working directory if applicable
@@ -369,13 +358,13 @@ int handleRequest(char *command, struct sockaddr_in *peerAddr, int establishedFD
 		}
 	 	charStored++; //one last increment for null terminator	
 	
-		char charMsgSize[4];
-		memset(charMsgSize, '\0', 4);
+		char charMsgSize[256];
+		memset(charMsgSize, '\0', 256);
 		sprintf(charMsgSize, "%d", charStored); 
 
 	 	//send the size of the message we are going to send
 	 
-	 	byteSent = send(socketFD, charMsgSize, 4, 0);
+	 	byteSent = send(socketFD, charMsgSize, 256, 0);
 	 	if (byteSent < 0) {
 			fprintf(stderr, "ftserver: Send ERROR\n");
 			errorFlag = 1;
@@ -420,7 +409,7 @@ int handleRequest(char *command, struct sockaddr_in *peerAddr, int establishedFD
 
 			//tell client we did not find the file
 			sendStatusMsg(establishedFD, 0);
-
+			
 			goto dataConCleanup;
 		}
 		sendStatusMsg(establishedFD	, 1);
@@ -429,13 +418,13 @@ int handleRequest(char *command, struct sockaddr_in *peerAddr, int establishedFD
 		//get size of file
 		fseek(fd, 0L, SEEK_END);
 		int sz = ftell(fd);
-		char sizeChar[4];
-		memset(sizeChar, '\0', 4);
+		char sizeChar[256];
+		memset(sizeChar, '\0', 256);
 		sprintf(sizeChar, "%d", sz);
 		rewind(fd);
 
 		//tell the client how big the file is that we are sending:
-	 	byteSent = send(socketFD, sizeChar, 4, 0);
+	 	byteSent = send(socketFD, sizeChar, 256, 0);
 	 	if (byteSent < 0) {
 			fprintf(stderr, "ftserver: Send ERROR\n");
 			errorFlag = 1;
@@ -456,7 +445,10 @@ int handleRequest(char *command, struct sockaddr_in *peerAddr, int establishedFD
 					fprintf(stderr, "ftserver: Send ERROR\n");
 					errorFlag = 1;
 					goto dataConCleanup;
-				}	
+				}
+			//	while(currentSend < bytesRead) {
+				//	currentSend += send(socketFD, &fileDataBuffer[currentSend], 1000, 0);
+			//	}	
 			}
 			memset(fileDataBuffer, 0, sizeof(fileDataBuffer));
 			bytesRead = fread(fileDataBuffer, 1, 1000, fd);
