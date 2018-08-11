@@ -102,8 +102,8 @@ void primaryLoop(char* port) {
 	ssize_t byteSent;
 	//pid_t spawnPid;
 	char readBuffer[1000];
-	char *fileNotFound = "File not found."
-	char *xferComplete = "Transfer complete."
+	char *fileNotFound = "File not found.";
+	char *xferComplete = "Transfer complete.";
 	
 
 	//setup connection/listener
@@ -146,9 +146,9 @@ void primaryLoop(char* port) {
 		fileSent = handleRequest(readBuffer, &clientAddress);
 
 		//send status messages
-		int msgSize;
+		int *msgSize;
 		if (fileSent == 0) {
-			msgSize = sizeof(fileNotFound);
+			*msgSize = sizeof(fileNotFound);
 			byteSent = send(establishedConnectionFD, msgSize, 4, 0);
 			byteSent = send(establishedConnectionFD, fileNotFound, 100, 0);
 			if (byteSent < 0) {
@@ -174,7 +174,7 @@ void primaryLoop(char* port) {
 
 
 //handleRequest
-void handleRequest(char *command, struct sockaddr_in *peerAddr) {
+int handleRequest(char *command, struct sockaddr_in *peerAddr) {
 
 	char *filePath = "./";
 	int internalError = 0;
@@ -381,8 +381,9 @@ void handleRequest(char *command, struct sockaddr_in *peerAddr) {
 
 		//sorce: https://stackoverflow.com/questions/238603/how-can-i-get-a-files-size-in-c
 		//get size of file
-		fssek(fd, 0L, SEEK_END);
-		int sz = ftell(fd);
+		fseek(fd, 0L, SEEK_END);
+		int *sz = NULL;
+		*sz = ftell(fd);
 		rewind(fd);
 
 		//tell the client how big the file is that we are sending:
