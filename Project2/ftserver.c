@@ -31,7 +31,7 @@
 
 //function prototypes
 int startup(char*);
-void handleRequest(char *, struct sockaddr_in *);
+int handleRequest(char *, struct sockaddr_in *);
 void primaryLoop(char *);
 
 
@@ -98,9 +98,12 @@ void primaryLoop(char* port) {
 	socklen_t sizeOfClientInfo;
 	int errorFlag, listenSocketFD, establishedConnectionFD;
 	//int establishedConnectionFD_FT;
-	int charsRead;
+	int charsRead, fileSent;
+	ssize_t byteSent;
 	//pid_t spawnPid;
 	char readBuffer[1000];
+	char *fileNotFound = "File not found."
+	char *xferComplete = "Transfer complete."
 	
 
 	//setup connection/listener
@@ -140,8 +143,26 @@ void primaryLoop(char* port) {
 
 
 		//call handle request
-		handleRequest(readBuffer, &clientAddress);
+		fileSent = handleRequest(readBuffer, &clientAddress);
 
+		//send status messages
+		int msgSize;
+		if (fileSent == 0) {
+			msgSize = sizeof(fileNotFound);
+			byteSent = send(establishedConnectionFD, msgSize, 4, 0);
+			byteSent = send(establishedConnectionFD, fileNotFound, 100, 0);
+			if (byteSent < 0) {
+				fprintf(stderr, "ftserver: send ERROR\n");
+			}
+		}
+		else if (fileSent == 1) {
+			msgSize = sizeof(xferComplete);
+			byteSent = send(establishedConnectionFD, msgSize, 4, 0);	
+			byteSent = send(establishedConnectionFD, xferComplete, 100, 0);
+			if (byteSent < 0) {
+				fprintf(stderr, "ftserver: send ERROR\n");
+			}
+		}
 	}
 
 	cleanup:
@@ -170,13 +191,13 @@ void handleRequest(char *command, struct sockaddr_in *peerAddr) {
 	char *token;
 	struct dirent *fileInDir = NULL;
 	//socket variables for sending on data port
-	int socketFD;
+	int socketFD, msgSize;
 	struct sockaddr_in clientAddress;
 	struct hostent* clientHostInfo;
 	int currentSend;
 	ssize_t byteSent;
 	//variables for sending particular file
-	int bytesRead;
+	int bytesRead, fileFound = 2;
 	FILE *fd = NULL;
 
 
@@ -314,6 +335,16 @@ void handleRequest(char *command, struct sockaddr_in *peerAddr) {
 	 	charStored++; //one last increment for null terminator
 
 
+	 	//send the size of the message we are going to send
+	 	msgSize = sizeof(fileIndex);
+	 	byteSent = send(socketFD, msgSize, 4, 0);
+	 	if (byteSent < 0) {
+			fprintf(stderr, "ftserver: Send ERROR\n");
+			errorFlag = 1;
+			goto dataConCleanup;
+		}
+
+
 		//send ftclient the list of files in the path directory as one continous string
 		byteSent = send(socketFD, fileIndex, 1000, 0);
 		if (byteSent < 0) {
@@ -343,15 +374,32 @@ void handleRequest(char *command, struct sockaddr_in *peerAddr) {
 	else if (validInput == 1 && sendFile == 1) {
 
 		if ((fd = fopen(fileName, "r")) == NULL) {
-			fprintf(stderr, "ftserver: errror opening file. %s\n", strerror(errno));
+			fprintf(stderr, "ftserver: error opening file. %s\n", strerror(errno));
+			fileFound = 0;
 			goto dataConCleanup;
 		}
+
+		//sorce: https://stackoverflow.com/questions/238603/how-can-i-get-a-files-size-in-c
+		//get size of file
+		fssek(fd, 0L, SEEK_END);
+		int sz = ftell(fd);
+		rewind(fd);
+
+		//tell the client how big the file is that we are sending:
+	 	byteSent = send(socketFD, sz, 4, 0);
+	 	if (byteSent < 0) {
+			fprintf(stderr, "ftserver: Send ERROR\n");
+			errorFlag = 1;
+			goto dataConCleanup;
+		}
+
 		//read and send in 1000 byte chunks
 		unsigned char fileDataBuffer[1000];
 		memset(fileDataBuffer, 0, sizeof(fileDataBuffer));
 		bytesRead = fread(fileDataBuffer, 1, 1000, fd);
 		
 		//keep reading and sending until entire file has been sent
+		//my wife helped me with this part
 		while(bytesRead != 0) {
 			if (bytesRead > 0) {
 				currentSend = send(socketFD, fileDataBuffer, 1000, 0);
@@ -364,6 +412,7 @@ void handleRequest(char *command, struct sockaddr_in *peerAddr) {
 			memset(fileDataBuffer, 0, sizeof(fileDataBuffer));
 			bytesRead = fread(fileDataBuffer, 1, 1000, fd);
 		}
+		fileFound = 1;
 
 		fclose(fd);
 	}
@@ -391,6 +440,8 @@ void handleRequest(char *command, struct sockaddr_in *peerAddr) {
 	if (errorFlag == 1) {
 		exit(1);
 	}
+
+	return fileFound;
 
 }
 
