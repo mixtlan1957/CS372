@@ -36,6 +36,7 @@ def makeRequest(socketFD, req):
 #recieveFile
 def recieveFile(rec_socketFD, fileName, portNo, comSocket, hostName):
 	connectionSocket, addr = rec_socketFD.accept()
+	status = ""
 
 	#check if file already exists in current directory
 	#source: https://stackoverflow.com/questions/82831/how-do-i-check-whether-a-file-exists
@@ -46,29 +47,7 @@ def recieveFile(rec_socketFD, fileName, portNo, comSocket, hostName):
 			fcount = fcount + 1
 			fileName =  fileName.split("_")[0] + "_copy" + str(fcount) + ".txt" 
 
-	print("Receiving \"" + fileName + "\" from " + hostName + ":" + str(portNo))
-
-
-	#file length will be in "header" aka first four bytes of data		
-	fileLen_CString = connectionSocket.recv(4)
-	fileLen = int(fileLen_CString.strip('\0'))
-
-
-	fileBuffer = ""
-
-	while len(fileBuffer) < fileLen:
-		packet = connectionSocket.recv(fileLen - len(fileBuffer))
-		if not packet:
-			return None
-		fileBuffer += packet
-
-	with open(fileName, 'w') as f:
-		f.write(fileBuffer)
-
-
-	#small sleep interval before getting status msg
-	sleep(1)
-
+	
 
 	#recieve status message
 	status_C = comSocket.recv(4)
@@ -81,9 +60,33 @@ def recieveFile(rec_socketFD, fileName, portNo, comSocket, hostName):
 		packet = comSocket.recv(statusMsgLen - len(statusMsg))
 		if not packet:
 			return None
-		statusMsg += packet
+		statusMsg += packet	
 
-	print(statusMsg)
+	if statusMsg == "FILE NOT FOUND.":
+		print(hostname + ":" + str(portNo) + "says " + statusMsg)
+	else:
+		print("Receiving \"" + fileName + "\" from " + hostName + ":" + str(portNo))
+		status = "ok"	
+
+
+
+	if status == "ok":		
+		#file length will be in "header" aka first four bytes of data		
+		fileLen_CString = connectionSocket.recv(4)
+		fileLen = int(fileLen_CString.strip('\0'))
+
+
+		fileBuffer = ""
+
+		while len(fileBuffer) < fileLen:
+			packet = connectionSocket.recv(fileLen - len(fileBuffer))
+			if not packet:
+				return None
+			fileBuffer += packet
+
+		with open(fileName, 'w') as f:
+			f.write(fileBuffer)
+
 
 	connectionSocket.close()
 	#rec_socketFD.close()

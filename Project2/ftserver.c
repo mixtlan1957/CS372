@@ -33,6 +33,7 @@
 int startup(char*);
 int handleRequest(char *, struct sockaddr_in *);
 void primaryLoop(char *);
+void sendStatusMsg(int, int); 
 
 
 //startup
@@ -101,8 +102,6 @@ void primaryLoop(char* port) {
 	ssize_t byteSent;
 	//pid_t spawnPid;
 	char readBuffer[1000];
-	char *fileNotFound = "File not found.";
-	char *xferComplete = "Transfer complete.";
 	
 
 	//setup connection/listener
@@ -145,30 +144,8 @@ void primaryLoop(char* port) {
 		
 
 		//call handle request
-		fileSent = handleRequest(readBuffer, &clientAddress);
+		handleRequest(readBuffer, &clientAddress, establishedConnectionFD);
 
-		//send status messages
-		int msgSize = 0;
-		char szCString[4];
-		memset(szCString, '\0', 4);
-		if (fileSent == 0) {
-			msgSize = strlen(fileNotFound) + 1;
-			sprintf(szCString, "%d", msgSize);
-			byteSent = send(establishedConnectionFD, szCString, 4, 0);
-			byteSent = send(establishedConnectionFD, fileNotFound, 100, 0);
-			if (byteSent < 0) {
-				fprintf(stderr, "ftserver: send ERROR\n");
-			}
-		}
-		else if (fileSent == 1) {
-			msgSize = strlen(xferComplete) + 1;
-			sprintf(szCString, "%d", msgSize);
-			byteSent = send(establishedConnectionFD, szCString, 4, 0);	
-			byteSent = send(establishedConnectionFD, xferComplete, 100, 0);
-			if (byteSent < 0) {
-				fprintf(stderr, "ftserver: send ERROR\n");
-			}
-		}
 	}
 
 	cleanup:
@@ -179,8 +156,41 @@ void primaryLoop(char* port) {
 }
 
 
+void sendStatusMsg(int establishedConnectionFD, int fileSent) {
+	char *fileNotFound = "FILE NOT FOUND.";
+	char *xferComplete = "inbound";
+		
+
+	//send status messages
+	int msgSizeStatus = 0;
+	char szCString[4];
+	memset(szCString, '\0', 4);
+	if (fileSent == 0) {
+		msgSize = strlen(fileNotFound) + 1;
+		sprintf(szCString, "%d", msgSizeStatus);
+		byteSent = send(establishedConnectionFD, szCString, 4, 0);
+		byteSent = send(establishedConnectionFD, fileNotFound, 100, 0);
+		if (byteSent < 0) {
+			fprintf(stderr, "ftserver: send ERROR\n");
+		}
+	}
+	else if (fileSent == 1) {
+		msgSize = strlen(xferComplete) + 1;
+		sprintf(szCString, "%d", msgSizeStatus);
+		byteSent = send(establishedConnectionFD, szCString, 4, 0);	
+		byteSent = send(establishedConnectionFD, xferComplete, 100, 0);
+		if (byteSent < 0) {
+			fprintf(stderr, "ftserver: send ERROR\n");
+		}
+	}	
+
+}
+
+
+
+
 //handleRequest
-int handleRequest(char *command, struct sockaddr_in *peerAddr) {
+int handleRequest(char *command, struct sockaddr_in *peerAddr, int establishedFD) {
 
 	int internalError = 0;
 	DIR *dirLoadFrom;
@@ -407,8 +417,13 @@ int handleRequest(char *command, struct sockaddr_in *peerAddr) {
 		if ((fd = fopen(fileName, "r")) == NULL) {
 			printf("File not found. Sending error message to %s: %s\n", ftclientName, charPort);
 			fileFound = 0;
+
+			//tell client we did not find the file
+			sendStatusMsg(establishedFD, 0);
+
 			goto dataConCleanup;
 		}
+		sendStatusMsg(establishedFD	, 1);
 
 		//sorce: https://stackoverflow.com/questions/238603/how-can-i-get-a-files-size-in-c
 		//get size of file
