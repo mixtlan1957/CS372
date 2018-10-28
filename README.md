@@ -1,1 +1,1 @@
-# CS372
+# Introduction to Computer Networks
